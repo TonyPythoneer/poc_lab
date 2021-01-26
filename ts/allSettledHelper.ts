@@ -7,48 +7,80 @@
  *   Generic type
  *
  * Idea:
- *   Generic type can automationly refer input's typing,
+ *   Generic type can automatically refer input's typing,
  *   or you can declare your expected types on the function
+ *
+ * Advantages:
+ *   - Using type inference from TypeScript
+ *   - Users don't spend time to define typings for the input and output
+ *   - To reduce human error, for instance, someone forgets declaring typings for the input and output
+ *
  */
 
 // mock function
-function makeRequest(count = 0) {
-    async function req() {
-        if (count%2 === 1) return count
-        throw count;
-    }
-    return req();
+async function req(count = 0) {
+    if (count%2 === 1) return count
+    throw count;
 }
 
 
-// helper function for ts
-function ClassifyAllSettled<F, R = any>(array: PromiseSettledResult<F>[]) {
-    const initValue = {
-        allFulfilled: [] as Array<F>,
-        allRejected: [] as Array<R>,
-    };
-    const results = array.reduce((results, element) => {
-        if (element.status === 'fulfilled') results.allFulfilled.push(element.value);
-        else results.allRejected.push(element.reason);
-        return results;
-    }, initValue);
-    return results
+// just a array generator, please skip it
+const range = (start: number, stop: number, step: number) => Array.from({ length: (stop - start) / step + 1}, (_, i) => start + (i * step));
+
+
+/**
+ * It just does classify params into `allFulfilled` and `allRejected` for the results of `allSettled`
+ *
+ * Design idea:
+ *   Basically, users don't care the type of `allRejected` and
+ *   the type of `allFulfilled` should take sake of Typescript's inference to save time about declaring typing,
+ *   so `allRejected` and `allFulfilled` are set the first and second generic types
+ *
+ *   If they need to reuse `allRejected`,
+ *   they can define the type in the first generic type of the function,
+ *   and won't redeclare the type of the `allSettled`.
+ *
+ * Cases:
+ *
+ *   1. When: You just enjoy the convenience of out of the box from this function
+ *      Expected: No typing, just calling.
+ *
+ *   ```ts
+ *   const results = await Promise.allSettled(promises);
+ *   const { allFulfilled } = ClassifyAllSettled(results);
+ *   ```
+ *
+ *   2. When: You need to reuse error data from the output
+ *      Expected: Just typing for one. The function works as usual.
+ *
+ *   ```ts
+ *   const results = await Promise.allSettled(promises);
+ *   const { allRejected } = ClassifyAllSettled<allRejectedType>(results);
+ *   ```
+ *
+ */
+function ClassifyAllSettled<R = unknown, F = any>(items: PromiseSettledResult<F>[]) {
+    // Your eventual returning variables should be written in heading
+    // Likewise, it hints users that these variables have been referring the `generic type`
+    const allFulfilled: Array<F> = [];
+    const allRejected: Array<R> = [];
+
+    // Just a classification function
+    // The detail is not important and can't change the data structure, so it can be written one line.
+    items.forEach(item => item.status === 'fulfilled' ? allFulfilled.push(item.value) : allRejected.push(item.reason));
+    return {allFulfilled, allRejected};
 }
+
 
 // main function
-type Awaited<T> = T extends PromiseLike<infer U> ? Awaited<U> : T;
 async function main() {
-    type outputPromise = ReturnType<typeof makeRequest>;
+    const promises = range(1, 100, 1).map((element) => req(element)); // just a lot of promises as an input
+    const results = await Promise.allSettled(promises);
 
-    const reqs: Array<outputPromise> = [];
-    for(let i =1; i<=100; i++) {
-        reqs.push(makeRequest(i));
-    }
+    const { allFulfilled, allRejected } = ClassifyAllSettled(results);
 
-    const data = await Promise.allSettled(reqs);
-    const { allFulfilled, allRejected } = ClassifyAllSettled(data)
+    console.log('result:');
     console.log(allFulfilled);
     console.log(allRejected);
 }
-
 main();
